@@ -19,6 +19,8 @@ knitr::opts_chunk$set(eval = TRUE)
 
 ## Talent Management Analysis
 ##### GitHub Repository: https://github.com/GeekyGurlzRock/DDS-Project-2-Ana-Alfaro.git
+##### Youtube link: https://youtu.be/xgG7m5eQqLM
+
 
 
 In order to improve employee retention and talent management, we will conduct research on employee attributes and explore the characteristics that lead to employee turnover.
