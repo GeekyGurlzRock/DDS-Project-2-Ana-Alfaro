@@ -1,0 +1,415 @@
+---
+title: "Case Study 2 DDS"
+author: "Ana Alfaro"
+
+
+output: 
+       prettydoc::html_pretty:
+       theme: leonids
+       highlight: github
+       fig_caption: yes
+
+---
+
+```{r setup, load-packages, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(eval = TRUE)
+```
+
+## Talent Management Analysis
+##### GitHub Repository: https://github.com/GeekyGurlzRock/DDS-Project-2-Ana-Alfaro.git
+
+
+In order to improve employee retention and talent management, we will conduct research on employee attributes and explore the characteristics that lead to employee turnover.
+
+
+```{r DirectorySet, eval= FALSE}
+########################## Initialize Directories ###################################
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+```
+
+
+
+```{r LoadingFiles, echo=FALSE,include=F}
+########## Loading Libraries ##########
+library(dplyr)
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(class)
+library(caret)
+
+########## Loading Data Files ########## 
+
+CaseData = read.csv('CaseStudy2-data.csv',header = T,sep = ",")
+
+```
+
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA}
+
+########## Selecting  data to prep and model ########## 
+
+classifyDATA <- CaseData[,c(3,2,5,7,11,12,14,15,16,18,20,21,22,25,26,27,29,30,31,32,33,34,35,36)]
+classifyDATA$Response <- ifelse(classifyDATA$Attrition == "No", 0,1)
+
+CaseDataNoHR <- filter(CaseData, Department !='Human Resources')
+CaseDataWHR <- filter(CaseData, Department =='Human Resources')
+
+classifyDATANoHR <- CaseDataNoHR[,c(3,2,5,7,11,12,14,15,16,18,20,21,22,25,26,27,29,30,31,32,33,34,35,36)]
+classifyDATANoHR$Response <- ifelse(classifyDATANoHR$Attrition == "No", 0,1)
+
+########## glimpse(classifyDATA)
+MINE = classifyDATA[,c(2:25)]
+#glimpse(MINE)
+
+MINENoHR = classifyDATANoHR[,c(2:25)]
+########## glimpse(MINENoHR)
+
+
+```
+
+
+
+
+
+### Exploring the data
+
+Evaluating the distribution of employee attrition by department and salary range, it would be assumed that Human Resources has a very good retention pattern.
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Attrition by Department"}
+
+CaseData %>% ggplot(aes(x=Department, y=MonthlyIncome, fill = Attrition)) + geom_boxplot() + theme_dark() 
+
+```
+
+
+
+
+
+Adding employee age to the analysis prompts a disparity to emerge in the Human Resource retention by age data.  
+
+There are young employees with low salaries that are disproportionately leaving the human resources department.
+
+
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Age Range and Income by Department"}
+
+CaseData %>% ggplot(aes(x=Age, y=MonthlyIncome,color=Attrition))+ geom_point() + facet_grid(~Department) + theme_dark()
+
+
+```
+
+
+Learning more about the job roles held by these employees, it is apparent that they are non-management positions. 
+
+The insight gained from identifying these employee's characteristics can be used to tailor programs and incentives to improve retention in this area.
+
+Success can be measured by tracking retention rates over time for these employees to determine if the programs instituted are effective.
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Attrition by Job Role ~ Human Resources"}
+
+CaseDataWHR %>% ggplot(aes(x=Age, y=MonthlyIncome,color=Attrition))+ geom_point() + facet_grid(~JobRole) + theme_dark()
+
+
+```
+
+Manipulate this interactive graph to pivot the target employee's Age vs Income vs Attrition for an increased perspective.
+
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Interactive Data Explorer"}
+
+library(plotly)
+p <- plot_ly(CaseDataWHR,x=~Age,y=~MonthlyIncome, z=~Attrition, color=~Attrition) %>% add_markers() %>% layout(scene=list(title='experiment'),yaxis=list(title = 'Income', zaxis=list(title='Attrition')))
+
+p
+
+```
+
+
+
+## Factors that Influence Attrition
+
+
+
+### Correlation
+
+Looking at the relationship between the dataset attributes and the response variable, there are not any that stand out, however, there are some that show promise.
+
+Additionally, several attributes towards the end of the dataset seem to be closed aligned to each other.
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Correlation Plot"}
+
+
+library(corrplot)
+library(RColorBrewer)
+M <- cor(MINE)
+
+corrplot(M, col=brewer.pal(n=6, name="RdYlBu"),tl.cex = .75)
+
+
+
+
+```
+
+
+
+
+### Factors that Influence Attrition
+
+Processed the data using a random forest to identify the factors that are most influential in employee turnover
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Top 3 Most Influential Attributes"}
+
+
+library(randomForest)
+rf <- randomForest(as.factor(Response)~., data=MINE)
+RFI <- as.data.frame(rf$importance)
+colnames(RFI) = c("Influence")
+
+RFI %>% slice_max(RFI,n=3)
+
+
+```
+
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA}
+
+set.seed(6)
+splitPerc = .70
+iterations = 100
+numks = 10
+
+masterAcc = matrix(nrow = iterations, ncol = numks)
+
+
+
+for(j in 1:iterations)
+{
+  
+  trainIndices = sample(1:dim(MINE)[1],round(splitPerc * dim(MINE)[1]))
+  train = MINE[trainIndices,]
+  test = MINE[-trainIndices,]
+
+  for(i in 1:numks)
+  {
+    classifications = knn(train[,20:24],test[,20:24], train$Response, k = i, prob = TRUE)
+    table(classifications,test$Response)
+    CM = confusionMatrix(table(classifications,test$Response))
+    masterAcc[j,i] = CM$overall[1]  
+  }  
+  
+}
+
+
+MeanAcc = colMeans(masterAcc)
+
+```
+
+### Optimize Attrition Classification
+
+Ran an iterative process to identify the number of nearest neighbors that are required to correctly predict employee attrition.  It appears the ideal number of nearest neighbors is 1.
+
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="The Mean K-NN Value Line graph"}
+plot(seq(1,numks,1),MeanAcc, type = "l")
+
+```
+
+
+
+
+### Attrition Classification Model Metrics
+
+Once we used the optimized nearest neighbor count, we derived the model performance values.  The model is performing to spec of > 60% specificity and sensitivity.
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="KNN Model Metrics"}
+
+splitPerc = .7
+set.seed(6)
+
+trainIndices = sample(1:dim(MINE)[1],round(splitPerc * dim(MINE)[1]))
+train = MINE[trainIndices,]
+test = MINE[-trainIndices,]
+
+model = knn(train[,20:24],test[,20:24], train$Response, k = 1, prob = TRUE)
+
+CM = confusionMatrix(table(model,test$Response))
+
+CM
+
+```
+
+
+
+
+
+
+
+
+
+## Analysing Monthly Income
+
+Next we will explore the attributes that drive employee income.
+
+
+### Factors that influence income
+
+Using a random forest regression we understand the attributes that are most influential to predict a monthly income.
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="The 6 most influential values for Monthly Income"}
+
+
+library(randomForest)
+rf2 <- randomForest(as.factor(MonthlyIncome)~., data=MINE)
+#rf2$importance
+RFI2 <- as.data.frame(rf2$importance)
+colnames(RFI2) = c("Influence")
+RFI2 %>% slice_max(RFI2,n=6)
+
+```
+
+
+
+#### Linear Model
+
+
+Employing the attributes that most highly influence monthly income, we develop the following linear regression model.
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="The Mean K-NN Value Line graph"}
+
+library(caret)
+
+myModelHP = lm(MINE$MonthlyIncome ~ MINE$EmployeeNumber + MINE$DailyRate + MINE$MonthlyRate + MINE$TotalWorkingYears + MINE$Age, data = MINE)
+predicted <- predict.lm(myModelHP)
+summary(myModelHP)
+
+```
+#### RMSE
+
+This model represented a Root Mean Square error below 3000, as specified in the requirements.
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="The Mean K-NN Value Line graph"}
+
+RMSE(predicted,MINE$MonthlyIncome)
+
+```
+
+#### Income vs Prediction
+
+It appears the linear regression is most effective at predicting lower income levels.
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Prediction vs Monthly Income"}
+
+
+MINE %>% ggplot(aes(x = MonthlyIncome, y = MonthlyIncome)) + geom_point() + geom_line(data = MINE, aes( x = MonthlyIncome, y = predicted, col = "red")) + ggtitle("LR Model:Monthly Income vs Predictions") + scale_color_discrete(name = "Predicted")
+
+
+
+```
+
+
+
+
+### Evaluating the regression model ~ coefficient plot
+
+We generated a coefficient plot to evaluate the impact of our regressors on the linear model.  It appears all regressors except Total Working Years, were reduced to 0.
+
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Coefficient Plot"}
+
+#install.packages("coefplot")
+library(coefplot)
+
+coefplot(myModelHP)
+
+
+```
+
+### Evaluating the regression model ~ confidence intervals
+
+We also looked at the confidence intervals and it appears that the intercept confidence interval is quite large.
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Coefficient Plot Original Model"}
+
+#install.packages("coefplot")
+library(coefplot)
+
+confint(myModelHP)
+
+
+```
+
+
+
+## Reduced Model
+
+Evaluating the model it appears that Total Working Years was the regresson that was statistically significant, this was reinforced by the coefficient plot of that regression model.
+
+We attempted a second version of the model, only leaving the regressors that were statistically significant and showed a coefficient larger than 0.
+
+The model performed equally well and it reduced complexity.
+
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="Coefficient Plot New Model"}
+
+install.packages("coefplot")
+
+myModelHP3 = lm(MINE$MonthlyIncome ~ MINE$TotalWorkingYears, data = MINE )
+predicted3 <- predict.lm(myModelHP3)
+summary(myModelHP3)
+
+coefplot(myModelHP3)
+
+
+```
+### RMSE New Model
+
+The reduced model also performs to spec with an RMSE lower than 3000, as requested.
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="The Mean K-NN Value Line graph"}
+
+
+RMSE(predicted3,MINE$MonthlyIncome)
+
+
+```
+
+
+### Evaluating the new model ~ confidence intervals
+
+The confidence intervals for the new model are much more reasonable.
+
+
+```{r,  echo = FALSE, message = FALSE, include = T, comment= NA,  fig.align = 'center', fig.cap="The Mean K-NN Value Line graph"}
+
+confint(myModelHP3)
+
+
+```
+
+
+
+
+### Conclusion
+
+The data that was examined revealed opportunities for Frito Lay to target specific employee segments in the Human Resources department and improve employee retention.  Additionally, there are very good attributes that can identify employess with potential attrition.  As demonstrated, complex models are not always required to derive meaningful insights.
+
+
+
+
+
+
